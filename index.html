@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZIPNCRYPT</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+body {
+  background: black;
+  color: #00ff88;
+  font-family: monospace;
+}
+.terminal {
+  border: 1px solid #00ff88;
+  padding: 20px;
+  margin-top: 20px;
+}
+button {
+  background: #00ff88;
+  color: black;
+  padding: 10px;
+  margin-top: 10px;
+  width: 100%;
+}
+input, textarea {
+  background: black;
+  border: 1px solid #00ff88;
+  color: #00ff88;
+  padding: 10px;
+  width: 100%;
+}
+</style>
+</head>
+
+<body class="p-4">
+<h1 class="text-3xl text-center">ZIPNCRYPT</h1>
+
+<div class="terminal">
+<p>> Initializing ZIPNCRYPT...</p>
+
+<h2>🔒 Encrypt</h2>
+
+<input type="file" id="fileInput" multiple>
+<textarea id="textInput" placeholder="Or enter text..."></textarea>
+
+<input type="password" id="pin" placeholder="4-digit PIN">
+<input type="password" id="confirmPin" placeholder="Confirm PIN">
+
+<button onclick="encrypt()">LOCK FILE</button>
+
+<p id="encryptStatus"></p>
+</div>
+
+<div class="terminal">
+<h2>🔓 Decrypt</h2>
+
+<input type="file" id="encFile">
+<input type="password" id="decryptPin" placeholder="4-digit PIN">
+
+<button onclick="decrypt()">UNLOCK FILE</button>
+
+<p id="decryptStatus"></p>
+</div>
+
+<script>
+// Convert buffer to base64
+function toBase64(buffer) {
+  return btoa(String.fromCharCode(...new Uint8Array(buffer)));
+}
+
+// Convert base64 to buffer
+function fromBase64(base64) {
+  return Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+}
+
+// Derive key from PIN
+async function getKey(pin, salt) {
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(pin),
+    "PBKDF2",
+    false,
+    ["deriveKey"]
+  );
+
+  return crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt: salt,
+      iterations: 100000,
+      hash: "SHA-256"
+    },
+    keyMaterial,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"]
+  );
+}
+
+// Encrypt function
+async function encrypt() {
+  const status = document.getElementById("encryptStatus");
+  status.innerText = "> Processing...";
+
+  const pin = document.getElementById("pin").value;
+  const confirm = document.getElementById("confirmPin").value;
+
+  if (!/^\d{4}$/.test(pin)) {
+    status.innerText = "> PIN must be 4 digits.";
+    return;
+  }
+
+  if (pin !== confirm) {
+    status.innerText = "> PINs do not match.";
+    return;
+  }
+
+  let data;
+
+  const files = document.getElementById("fileInput").files;
+  const text = document.getElementById("textInput").value;
+
+  if (files.length > 0) {
+    const file = files[0];
+    data = await file.arrayBuffer();
+  } else if (text) {
+    data = new TextEncoder().encode(text);
+  } else {
+    status.innerText = "> No input provided.";
+    return;
+  }
+
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+
+  const key = await getKey(pin, salt);
+
+  const encrypted = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv: iv },
+    key,
+    data
+  );
+
+  const payload = {
+    salt: toBase64(salt),
+    iv: toBase64(iv),
+    data: toBase64(encrypted)
+  };
+
+  const blob = new Blob([JSON.stringify(payload)], { type: "application/octet-stream" });
+
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "encrypted.enc";
+  a.click();
+
+  status.innerText = "> Encryption complete.";
+}
+
+// Decrypt function
+async function decrypt() {
+  const status = document.getElementById("decryptStatus");
+  status.innerText = "> Processing...";
+
+  const file = document.getElementById("encFile").files[0];
+  const pin = document.getElementById("decryptPin").value;
+
+  if (!file) {
+    status.innerText = "> No file selected.";
+    return;
+  }
+
+  if (!/^\d{4}$/.test(pin)) {
+    status.innerText = "> PIN must be 4 digits.";
+    return;
+  }
+
+  const text = await file.text();
+  const payload = JSON.parse(text);
+
+  try {
+    const key = await getKey(pin, fromBase64(payload.salt));
+
+    const decrypted = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: fromBase64(payload.iv) },
+      key,
+      fromBase64(payload.data)
+    );
+
+    const blob = new Blob([decrypted]);
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "decrypted_file";
+    a.click();
+
+    status.innerText = "> Decryption successful.";
+  } catch (e) {
+    status.innerText = "> Wrong PIN or corrupted file.";
+  }
+}
+</script>
+
+</body>
+</html>
