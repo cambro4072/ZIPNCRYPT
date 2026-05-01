@@ -1,205 +1,119 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ZIPNCRYPT</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<style>
-body {
-  background: black;
-  color: #00ff88;
-  font-family: monospace;
-}
-.terminal {
-  border: 1px solid #00ff88;
-  padding: 20px;
-  margin-top: 20px;
-}
-button {
-  background: #00ff88;
-  color: black;
-  padding: 10px;
-  margin-top: 10px;
-  width: 100%;
-}
-input, textarea {
-  background: black;
-  border: 1px solid #00ff88;
-  color: #00ff88;
-  padding: 10px;
-  width: 100%;
-}
-</style>
+    <meta charset="UTF-8">
+    <title>TERMINAL_VAULT_v1.0</title>
+    <style>
+        body {
+            background-color: #000;
+            color: #0f0;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            text-transform: uppercase;
+        }
+        .vault-box {
+            border: 2px solid #0f0;
+            padding: 30px;
+            box-shadow: 0 0 15px #0f0;
+            background: #050505;
+            width: 400px;
+        }
+        h2 { border-bottom: 1px solid #0f0; padding-bottom: 10px; text-align: center; }
+        .input-group { margin: 20px 0; }
+        input {
+            background: #000;
+            border: 1px solid #0f0;
+            color: #0f0;
+            width: 100%;
+            padding: 10px;
+            box-sizing: border-box;
+            margin-top: 5px;
+        }
+        button {
+            background: #0f0;
+            color: #000;
+            border: none;
+            width: 100%;
+            padding: 15px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover { background: #00ff41; box-shadow: 0 0 10px #0f0; }
+        #status { margin-top: 15px; font-size: 0.8rem; color: #0f0; text-align: center; }
+    </style>
 </head>
+<body>
 
-<body class="p-4">
-<h1 class="text-3xl text-center">ZIPNCRYPT</h1>
+<div class="vault-box">
+    <h2>Access Terminal</h2>
+    
+    <div class="input-group">
+        <label>Select Target File</label>
+        <input type="file" id="fileInput">
+    </div>
 
-<div class="terminal">
-<p>> Initializing ZIPNCRYPT...</p>
+    <div class="input-group">
+        <label>Encryption Key</label>
+        <input type="password" id="passcode" placeholder="ENTER_CODE_">
+    </div>
 
-<h2>🔒 Encrypt</h2>
-
-<input type="file" id="fileInput" multiple>
-<textarea id="textInput" placeholder="Or enter text..."></textarea>
-
-<input type="password" id="pin" placeholder="4-digit PIN">
-<input type="password" id="confirmPin" placeholder="Confirm PIN">
-
-<button onclick="encrypt()">LOCK FILE</button>
-
-<p id="encryptStatus"></p>
-</div>
-
-<div class="terminal">
-<h2>🔓 Decrypt</h2>
-
-<input type="file" id="encFile">
-<input type="password" id="decryptPin" placeholder="4-digit PIN">
-
-<button onclick="decrypt()">UNLOCK FILE</button>
-
-<p id="decryptStatus"></p>
+    <button id="lockBtn">SECURE FILE</button>
+    <button id="unlockBtn" style="background: transparent; color: #0f0; border: 1px solid #0f0;">DECRYPT FILE</button>
+    
+    <div id="status">READY_</div>
 </div>
 
 <script>
-// Convert buffer to base64
-function toBase64(buffer) {
-  return btoa(String.fromCharCode(...new Uint8Array(buffer)));
-}
+    const status = document.getElementById('status');
 
-// Convert base64 to buffer
-function fromBase64(base64) {
-  return Uint8Array.from(atob(base64), c => c.charCodeAt(0));
-}
+    async function processFile(mode) {
+        const fileInput = document.getElementById('fileInput');
+        const passcode = document.getElementById('passcode').value;
 
-// Derive key from PIN
-async function getKey(pin, salt) {
-  const enc = new TextEncoder();
-  const keyMaterial = await crypto.subtle.importKey(
-    "raw",
-    enc.encode(pin),
-    "PBKDF2",
-    false,
-    ["deriveKey"]
-  );
+        if (!fileInput.files[0] || !passcode) {
+            status.innerText = "ERROR: CREDENTIALS_MISSING";
+            return;
+        }
 
-  return crypto.subtle.deriveKey(
-    {
-      name: "PBKDF2",
-      salt: salt,
-      iterations: 100000,
-      hash: "SHA-256"
-    },
-    keyMaterial,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["encrypt", "decrypt"]
-  );
-}
+        status.innerText = "EXECUTING...";
 
-// Encrypt function
-async function encrypt() {
-  const status = document.getElementById("encryptStatus");
-  status.innerText = "> Processing...";
+        try {
+            const file = fileInput.files[0];
+            const arrayBuffer = await file.arrayBuffer();
+            
+            /* LOGIC NOTE: To make this "unlockable," we use the passcode 
+               to transform the data. If you use the same passcode twice, 
+               it flips the bits back to their original state.
+            */
+            const data = new Uint8Array(arrayBuffer);
+            const key = new TextEncoder().encode(passcode);
+            
+            for (let i = 0; i < data.length; i++) {
+                data[i] = data[i] ^ key[i % key.length]; // XOR transformation
+            }
 
-  const pin = document.getElementById("pin").value;
-  const confirm = document.getElementById("confirmPin").value;
+            const blob = new Blob([data], { type: "application/octet-stream" });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            
+            a.href = url;
+            a.download = mode === 'lock' ? `LOCKED_${file.name}` : `OPEN_${file.name.replace('LOCKED_', '')}`;
+            a.click();
+            
+            window.URL.revokeObjectURL(url);
+            status.innerText = "COMMAND_SUCCESSFUL";
+        } catch (e) {
+            status.innerText = "SYSTEM_FAILURE";
+        }
+    }
 
-  if (!/^\d{4}$/.test(pin)) {
-    status.innerText = "> PIN must be 4 digits.";
-    return;
-  }
-
-  if (pin !== confirm) {
-    status.innerText = "> PINs do not match.";
-    return;
-  }
-
-  let data;
-
-  const files = document.getElementById("fileInput").files;
-  const text = document.getElementById("textInput").value;
-
-  if (files.length > 0) {
-    const file = files[0];
-    data = await file.arrayBuffer();
-  } else if (text) {
-    data = new TextEncoder().encode(text);
-  } else {
-    status.innerText = "> No input provided.";
-    return;
-  }
-
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-
-  const key = await getKey(pin, salt);
-
-  const encrypted = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv: iv },
-    key,
-    data
-  );
-
-  const payload = {
-    salt: toBase64(salt),
-    iv: toBase64(iv),
-    data: toBase64(encrypted)
-  };
-
-  const blob = new Blob([JSON.stringify(payload)], { type: "application/octet-stream" });
-
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "encrypted.enc";
-  a.click();
-
-  status.innerText = "> Encryption complete.";
-}
-
-// Decrypt function
-async function decrypt() {
-  const status = document.getElementById("decryptStatus");
-  status.innerText = "> Processing...";
-
-  const file = document.getElementById("encFile").files[0];
-  const pin = document.getElementById("decryptPin").value;
-
-  if (!file) {
-    status.innerText = "> No file selected.";
-    return;
-  }
-
-  if (!/^\d{4}$/.test(pin)) {
-    status.innerText = "> PIN must be 4 digits.";
-    return;
-  }
-
-  const text = await file.text();
-  const payload = JSON.parse(text);
-
-  try {
-    const key = await getKey(pin, fromBase64(payload.salt));
-
-    const decrypted = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv: fromBase64(payload.iv) },
-      key,
-      fromBase64(payload.data)
-    );
-
-    const blob = new Blob([decrypted]);
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "decrypted_file";
-    a.click();
-
-    status.innerText = "> Decryption successful.";
-  } catch (e) {
-    status.innerText = "> Wrong PIN or corrupted file.";
-  }
-}
+    document.getElementById('lockBtn').addEventListener('click', () => processFile('lock'));
+    document.getElementById('unlockBtn').addEventListener('click', () => processFile('unlock'));
 </script>
 
 </body>
